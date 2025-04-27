@@ -18,21 +18,39 @@ If you use the code or find this project helpful, please consider citing our pap
 }
 ```
 
-## Requirements
-+ python 3.6
-+ pytorch 1.4.0
+#  Step by Step Guide 
+1. Download this repository to a desired directory.
+
+2. Inside of that directory, run `conda env create -f environment.yml` to create the environment. Or install updated requirements listed below
+3.  Download the repo, along with [ImageNet_clsidx_to_labels](https://gist.github.com/yrevar/942d3a0ac09ec9e5eb3a) for the tutorial
+4. Follow the tutorial in *PatchAttack_tutorial.ipynb* 
+
+# Run with a dataset (with labels)
+1. Go into `main_dataset.py`
+2. Change paths to the datasets images (line 74) , and labels (line 57)
+
+3. Run the attack :)
+
+## Requirements (updated)
++ python 3.6  ---> 3.12
++ pytorch 1.4.0 ---> 2.5.1
 + easydict
 + opencv
 + matplotlib
 + scikit-learn
 + tqdm
-+ kornia 0.2.2
++ kornia 0.2.2 ---> 0.8.0
 + jupyter (for PatchAttack_tutorial.ipynb)
+### System Requirements (for `environment.yml`)
++ OS: Windows 10 or 11
++ GPU: With CUDA 12.4 support 
++ RAM: at least 8 GBs 
++ Disk Space: at least 2-5 GBs for environment installation
 
 ## Usage
 
 ### Dictionaries
- We privide [TextureDict_ImageNet_0.zip](https://livejohnshopkins-my.sharepoint.com/:u:/g/personal/cyang76_jh_edu/EcKGvE7jQVJMuMxqdbSSYdEB2VLbcE24m6YQDAqb2yR9KA?e=P8RJJm), [TextureDict_ImageNet_1.zip](https://livejohnshopkins-my.sharepoint.com/:u:/g/personal/cyang76_jh_edu/EXsnVi0FETZJuf1v9CLfu6YByb79RO_vj3-5BV_RY5Wzdg?e=lRUAj1). Please download, unzip and merge the two directories, constituing the whole texture dictionary used in our [paper](https://arxiv.org/abs/2004.05682). Alternatively, you can also generate one by yourself. First, please provide the paths to the train and val folder of ImageNet dataset and set cfg.ImageNet_train_dir and cfg.ImageNet_val_dir in parser.py. Second, you can optionally adjust the parameters in PatchAttack/PatchAttack_config.py to generate textures in different settings. Then, you can use the following commands to start the generation:
+ We provide [TextureDict_ImageNet_0.zip](https://livejohnshopkins-my.sharepoint.com/:u:/g/personal/cyang76_jh_edu/EcKGvE7jQVJMuMxqdbSSYdEB2VLbcE24m6YQDAqb2yR9KA?e=P8RJJm), [TextureDict_ImageNet_1.zip](https://livejohnshopkins-my.sharepoint.com/:u:/g/personal/cyang76_jh_edu/EXsnVi0FETZJuf1v9CLfu6YByb79RO_vj3-5BV_RY5Wzdg?e=lRUAj1). Please download, unzip and merge the two directories, constituting the whole texture dictionary used in our [paper](https://arxiv.org/abs/2004.05682). Alternatively, you can also generate one by yourself. First, please provide the paths to the train and val folder of ImageNet dataset and set cfg.ImageNet_train_dir and cfg.ImageNet_val_dir in parser.py. Second, you can optionally adjust the parameters in PatchAttack/PatchAttack_config.py to generate textures in different settings. Then, you can use the following commands to start the generation:
 
 + Build Texture Dictionary:
 ```bash
