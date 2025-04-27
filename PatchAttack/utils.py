@@ -165,7 +165,7 @@ class data_agent():
             return indices
 
     @staticmethod
-    def show_image_from_tensor(img, inv=False, save_dir=None, dpi=300, tight=True):
+    def show_image_from_tensor(img, inv=False, save_dir=None, dpi=300, tight=True, show=False):
         '''
         inv: flag to recover the nomalization transformation on images from ImageNet
         '''
@@ -195,6 +195,10 @@ class data_agent():
                 plt.subplots_adjust(left=0, right=1, bottom=0, top=1)
             plt.savefig(fname=save_dir,
                 dpi=dpi, facecolor='w', edgecolor='w', format='png')
+
+        if show:
+            plt.show()
+
         
     @staticmethod
     def save_with_content(path, image, dpi=300):

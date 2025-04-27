@@ -1,43 +1,48 @@
 import os
 import numpy as np
 from easydict import EasyDict as edict
+from pathlib import Path
 
 
 # PatchAttack config
 PA_cfg = edict() 
 
 # config PatchAttack
-def configure_PA(t_name, t_labels, 
-                 target=False, area_occlu=0.035, n_occlu=1, rl_batch=500, steps=50,
-                 HPA_bs=1,
-                 MPA_color=False, 
-                 TPA_n_agents=10,
-                 ):
+def configure_PA(
+        t_name,     # texture dictionary dir
+        t_labels,   # all the labels in Dict, start from 0 and continuous
+        target=False,   # type of attack
+        area_occlu=0.035,   # area budget per patch (TPA)
+        n_occlu=1, rl_batch=500, steps=50,  # RL hyper parameters
+        HPA_bs=1,   # batch size for HPA
+        MPA_color=False,    # set to True for MPA_RGB variant
+        TPA_n_agents=10,    # How many sequential agents ran in TPA
+       ):
 
     # Dictionry's shared params
-    PA_cfg.t_name = t_name
-    PA_cfg.t_labels = t_labels
+    PA_cfg.t_name = t_name      # root folder name
+    PA_cfg.t_labels = t_labels  # classes that dictionary will have textures for
 
     # Texture dictionary
-    PA_cfg.conv = 5
-    PA_cfg.style_layer_choice = [1, 6, 11, 20, 29][:PA_cfg.conv]
-    PA_cfg.style_channel_dims = [64, 128, 256, 512, 512][:PA_cfg.conv]
-    PA_cfg.cam_thred = 0.8
-    PA_cfg.n_clusters = 30
-    PA_cfg.cls_w = 0
-    PA_cfg.scale = 1
-    PA_cfg.iter_num = 9999
+    PA_cfg.conv = 5     # number of VGG blocks whose Gram matrices are kept
+    PA_cfg.style_layer_choice = [1, 6, 11, 20, 29][:PA_cfg.conv]    # layer IDs (post ReLU)
+    PA_cfg.style_channel_dims = [64, 128, 256, 512, 512][:PA_cfg.conv]  # channels per chosen layer
+    PA_cfg.cam_thred = 0.8  # grad-cam mask threshold
+    PA_cfg.n_clusters = 30  # buckets per class
+    PA_cfg.cls_w = 0    # weight of class term while making textures
+    PA_cfg.scale = 1    # spatial tiling scalar for textures
+    PA_cfg.iter_num = 9999  # newest iteration to load or save
 
     # AdvPatch dictionary
-    PA_cfg.image_shape = (3, 224, 224)
-    PA_cfg.scale_min = 0.9
+    PA_cfg.image_shape = (3, 224, 224)  # sets valid area for patch placement
+    PA_cfg.scale_min = 0.9  # affine range during training
     PA_cfg.scale_max = 1.1
     PA_cfg.rotate_max = 22.5
     PA_cfg.rotate_min = -22.5
-    PA_cfg.batch_size = 16
-    PA_cfg.percentage = 0.09
-    PA_cfg.AP_lr = 10.0
-    PA_cfg.iterations = 500
+    PA_cfg.batch_size = 16  # mini-batch size when optimizing a patch
+    PA_cfg.percentage = 0.09    # % of image patch should take up
+    PA_cfg.AP_lr = 10.0     # patch tensor learning rate
+    PA_cfg.iterations = 500 # training iterations per patch
 
 
     # Attack's shared params
@@ -71,22 +76,25 @@ def configure_PA(t_name, t_labels,
     # when bs is larger than 1, it means attacking mulitple images simultaneously. Othereise it is too slow.
 
 
-    # Texture dict dirs
+    # Texture dict dirs (three level hierarchy)
     texture_dirs = []
     texture_sub_dirs = []
     texture_template_dirs = []
 
     for t_label in PA_cfg.t_labels:
+        #   level 1 - per class root
         texture_dir = os.path.join(
             PA_cfg.t_name,
             'attention-style_t-label_{}'.format(t_label)
         )
+        #   level 2 - conv depth, cam threshold and cluster count
         texture_sub_dir = os.path.join(
             texture_dir,
             'conv_{}_cam-thred_{}_n-clusters_{}'.format(
                 PA_cfg.conv, PA_cfg.cam_thred, PA_cfg.n_clusters
             )
         )
+        #   level 3 - class loss weight and tiling scale
         texture_template_dir = os.path.join(
             texture_sub_dir,
             'cls-w_{}_scale_{}'.format(
@@ -101,7 +109,7 @@ def configure_PA(t_name, t_labels,
     PA_cfg.texture_sub_dirs = texture_sub_dirs
     PA_cfg.texture_template_dirs = texture_template_dirs
 
-    # AdvPatch dict dirs
+    # AdvPatch dict dirs (one per label)
     PA_cfg.AdvPatch_dirs = []
     for t_label in PA_cfg.t_labels:
         AdvPatch_dir = os.path.join(
@@ -122,58 +130,47 @@ def configure_PA(t_name, t_labels,
         )
         PA_cfg.AdvPatch_dirs.append(AdvPatch_dir)
 
-    # TPA attack dirs
+    # TPA attack results dirs (one per agent)
     TPA_attack_dirs = []
     for agent_index in range(PA_cfg.n_agents):
         attack_dir = os.path.join(
             'target' if PA_cfg.target else 'non-target',
-            os.path.join(*PA_cfg.texture_template_dirs[0].split('/')[2:]),
-            'n-occlu_{}_f-noise_{}_lr_{}_rl-batch_{}_steps_{}_es-bnd_{}'
-            .format(
-                PA_cfg.n_occlu, PA_cfg.f_noise, 
-                PA_cfg.lr, PA_cfg.rl_batch, PA_cfg.steps, PA_cfg.es_bnd,
-            ),
-            'area-sched_'+'-'.join(
-                [str(item) for item in PA_cfg.area_sched[:agent_index+1]]
-            )+\
-            '_n-agents_{}'.format(agent_index+1),
+            f'c{PA_cfg.conv}_th{int(PA_cfg.cam_thred * 10)}_cl{PA_cfg.n_clusters}',
+            f'o{PA_cfg.n_occlu}_fn{int(PA_cfg.f_noise)}_lr{int(PA_cfg.lr * 100)}_rb{PA_cfg.rl_batch}_s{PA_cfg.steps}',
+            f'as{agent_index + 1}',
         )
         TPA_attack_dirs.append(attack_dir)
     PA_cfg.TPA_attack_dirs = TPA_attack_dirs
 
 
-    # MPA attack dirs
-    attack_dir = os.path.join(
-        'target' if PA_cfg.target else 'non-target',
-        'n-occlu_{}_color_{}_lr_{}_critic_{}_rl-batch_{}_steps_{}'.format(
-            PA_cfg.n_occlu, PA_cfg.color, PA_cfg.lr,
-            PA_cfg.critic, PA_cfg.rl_batch, PA_cfg.steps,
-        ),
-        'sigma-sched_'+'-'.join(
-            [str(item) for item in PA_cfg.sigma_sched]
-        ),
+    # MPA attack results dirs
+    MPA_attack_dir = os.path.join(
+        "target" if PA_cfg.target else "non-target",
+            f"oc{PA_cfg.n_occlu}"
+            f"_clr{int(PA_cfg.color)}"
+            f"_lr{int(PA_cfg.lr * 100)}"
+            f"_crt{int(PA_cfg.critic)}"
+            f"_rb{PA_cfg.rl_batch}"
+            f"_s{PA_cfg.steps}"
+        ,
+        "sigma-" + "-".join(str(s) for s in PA_cfg.sigma_sched),
     )
-    PA_cfg.MPA_attack_dir = attack_dir
+    PA_cfg.MPA_attack_dir = MPA_attack_dir
 
 
-    # HPA attack dirs
-    attack_dir = os.path.join(
-        'target' if PA_cfg.target else 'non-target',
-        'n-occlu_{}_steps_{}'
-        .format(
-            PA_cfg.n_occlu, PA_cfg.steps, 
-        ),
-        'sigma-sched_'+'-'.join(
-            [str(item) for item in PA_cfg.sigma_sched]
-        ),
+    # HPA attack results dirs
+    HPA_attack_dir = os.path.join(
+        "target" if PA_cfg.target else "non-target",
+        f"oc{PA_cfg.n_occlu}_s{PA_cfg.steps}",
+        "sigma-" + "-".join(str(s) for s in PA_cfg.sigma_sched),
     )
-    PA_cfg.HPA_attack_dir = attack_dir
+    PA_cfg.HPA_attack_dir = HPA_attack_dir
 
 
     # AP attack dirs
-    temp_dir = os.path.join(*PA_cfg.AdvPatch_dirs[0].split('/')[2:])
-    attack_dir = os.path.join(
-        'target' if PA_cfg.target else 'non-target',
+    temp_dir = os.path.join(*Path(PA_cfg.AdvPatch_dirs[0]).parts[2:])
+    AP_attack_dir = os.path.join(
+        "target" if PA_cfg.target else "non-target",
         temp_dir,
     )
-    PA_cfg.AP_attack_dir = attack_dir
+    PA_cfg.AP_attack_dir = AP_attack_dir

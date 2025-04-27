@@ -30,33 +30,38 @@ class custom_data_agent():
         or custom dataset when in 'correct' mode
         '''
 
+        # 'cache' file to avoid duplicate results
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
         file_name = os.path.join(save_dir, 'label_{}_train-set_{}_correct_{}.pt'.format(label, train, correct))
+        # use cached tensor
         if os.path.exists(file_name):
-            indices = torch.load(file_name)
-            return indices
-        else:
+            indices = torch.load(file_name) # load saved indices
+            return indices                  # early exit
+        else: # compute indices from scratch
             if train:
                 targets_tensor = torch.Tensor(self.train_dataset.targets)
             else:
                 raise NotImplementedError
-
+            # boolean mask that keeps samples whose ground-truth label matches input label
             temp = torch.arange(len(targets_tensor))
             indices = temp[targets_tensor==label]
-        
+
+            # optional filter to only keep correctly identified classes by the target model
             if correct:
-                cnn = cnn.cuda(torch_cuda).eval()
-                with torch.no_grad():
-                    wrong_set = []
+                cnn = cnn.cuda(torch_cuda).eval()   # inference mode on GPU
+                with torch.no_grad():   # no gradients needed
+                    wrong_set = []      # gather misclassified labels
                     label_tensor = torch.Tensor([label]).long().cuda(torch_cuda)
                     for index in indices:
+                        #   pull image exactly as the dataset returns it
                         input_tensor = self.train_dataset.__getitem__(index)[0]
                         input_tensor = input_tensor.cuda(torch_cuda).unsqueeze(0)
+                        # forward pass through reference network
                         output_tensor = cnn(input_tensor)
                         pred = output_tensor.argmax()
 
-                        # labels mapping
+                        # handle merged class experiments with labels mapping
                         if self.labels_mapping is not None:
                             valid_pred = False
                             for i_mapping in range(len(self.labels_mapping)):
@@ -67,16 +72,28 @@ class custom_data_agent():
                             if not valid_pred:
                                 pred = torch.LongTensor([-1])
                             pred = pred.cuda(torch_cuda)
-
+                         #  mark samples the cnn got wrong for removal
                         if pred != label_tensor:
                             wrong_set.append(index)
+                    #   drop every misclassified index
                     for item in wrong_set:
                         indices = indices[indices!=item]
+            # save for future runs
             torch.save(indices, file_name)
             return indices
 
 
 def build(DA, t_labels):
+    """
+    Generate Gram matrix based texture templates for each label in t_labels
+
+    Parameters:
+         DA = custom_data_agent
+            - provides fast access to training indices
+
+        t_labels = list of indices
+            - class ids to build textures for the dictionary
+    """
     # MAIN variables
     labels = torch.LongTensor(t_labels).cuda(torch_cuda)
     
@@ -84,10 +101,10 @@ def build(DA, t_labels):
     texture_templates = []
     
     # configure texture_generator
-    texture_generator.attention_threshold = PA_cfg.cam_thred
-    texture_generator.style_choice = PA_cfg.style_layer_choice
+    texture_generator.attention_threshold = PA_cfg.cam_thred    # grad-CAM mask threshold
+    texture_generator.style_choice = PA_cfg.style_layer_choice  # which VGG layers form the style vector
     
-    # prepare vgg19 to extract textures
+    # prepare vgg19 (reference classifier) to extract textures
     cnn = Models.vgg19(pretrained=True).cuda(torch_cuda).eval()
     
     # build texture templates for each t_label
@@ -107,20 +124,20 @@ def build(DA, t_labels):
                 t_labels[texture_index]))
         else:
 
-            # prepare indices
+            # get a clean set of image indices for this label
             indices = DA.get_indices(
                 t_labels[texture_index], save_dir=PA_cfg.texture_dirs[texture_index],
                 cnn=cnn, correct=True
             )
 
-            # cluster styles
+            # cluster their grad-CAM weighted style vectors into buckets
             kmeans = texture_generator.get_kmeans_style(
                 indices, DA.train_dataset,
                 save_dir=PA_cfg.texture_sub_dirs[texture_index],
                 n_clusters=PA_cfg.n_clusters,
             )
             
-            # process clusters
+            # flatten/inverse back to per layer gram matrices for generator
             target_clusters = texture_generator.flatten_style(
                 torch.from_numpy(kmeans.cluster_centers_).cuda(torch_cuda), 
                 inv=True, 
@@ -135,9 +152,9 @@ def build(DA, t_labels):
                         PA_cfg.texture_template_dirs[texture_index],
                         'cluster_{}'.format(c_index)
                     ),
-                    label=labels[texture_index],
-                    cls_w=PA_cfg.cls_w,
-                    scale=PA_cfg.scale,
+                    label=labels[texture_index],    # classification label
+                    cls_w=PA_cfg.cls_w,             # weight for classification terms
+                    scale=PA_cfg.scale,             # spatial tiling factor
                 )
                 print('index: {} | label_{} | {}th of {} texture is generated'.format(
                     texture_index, t_labels[texture_index], c_index+1, PA_cfg.n_clusters))
